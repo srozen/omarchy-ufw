@@ -19,6 +19,15 @@ of it.
 | Inactive | wall, no flames | bar urgent |
 | Not installed, or not yet read | wall, no flames | dimmed |
 
+Active, sitting among its neighbours at the right end of the bar:
+
+![the bar icon with ufw active](docs/bar-active.png)
+
+Inactive — the flames are out and the wall has gone to the theme's urgent
+colour, which is the point: it should be the thing your eye lands on:
+
+![the bar icon with ufw inactive](docs/bar-inactive.png)
+
 Hovering gives the same thing in words: `active — 6 rules`, `inactive —
 nothing is being filtered`, `ufw is not installed`.
 
