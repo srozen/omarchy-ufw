@@ -141,6 +141,10 @@ omarchy plugin validate .
 (cd .. && /usr/lib/qt6/bin/qmllint -I /usr/share/omarchy/shell srozen.ufw/Panel.qml)
 ```
 
+Only the first of those runs in CI, on every push and pull request
+(`.github/workflows/tests.yml`). The other two need Omarchy and Qt on the
+machine, which a runner does not have, so they stay local.
+
 qmllint cannot resolve `qs.Commons` and `qs.Ui` from outside the shell, so it
 reports every Omarchy component as missing and every use of `Style`, `Color`
 and `Model` as unqualified. That is noise — the first-party widgets produce it
