@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "srozen.ufw",
+  "name": "Firewall",
+  "version": "1.0.0",
+  "author": "srozen",
+  "license": "MIT",
+  "description": "ufw firewall status in the Omarchy bar, with a switch and the current rule list.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Firewall",
+    "description": "A wall with flames while ufw is active, and the same wall in the theme's urgent colour while it is not. Click for the default policies, the rule list, and a switch.",
+    "category": "Security",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "elevation": "pkexec",
+      "refreshIntervalSec": 30
+    },
+    "schema": [
+      {
+        "key": "elevation",
+        "type": "enum",
+        "label": "How to ask for the password",
+        "options": ["pkexec", "terminal"],
+        "defaultValue": "pkexec",
+        "description": "pkexec uses Omarchy's own authentication dialog. terminal opens a floating terminal running sudo, for a session with no polkit agent."
+      },
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Re-read interval (seconds)",
+        "min": 5,
+        "max": 600,
+        "step": 5,
+        "defaultValue": 30,
+        "description": "A safety net only — ufw's state files are watched, so changes normally appear at once."
+      }
+    ]
+  }
+}
