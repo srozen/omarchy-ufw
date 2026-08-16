@@ -152,3 +152,7 @@ type errors, and syntax.
 `String.fromCodePoint(0xF1A11)` rather than the character itself, because
 editing tools routinely mangle multi-byte sequences in QML and JavaScript.
 The two that matter are `md-wall_fire` (U+F1A11) and `md-wall` (U+F07FE).
+
+## License
+
+MIT. See [LICENSE](LICENSE).
