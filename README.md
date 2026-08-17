@@ -9,6 +9,30 @@ of it.
 
 ![the panel](docs/panel.png)
 
+## Installing
+
+```bash
+omarchy plugin add https://github.com/srozen/omarchy-ufw.git --enable
+```
+
+That clones it into `~/.config/omarchy/plugins/` and puts the icon in the right
+section of the bar. Drop `--enable` to install it without turning it on, and
+enable it later from Omarchy's widget settings or with:
+
+```bash
+omarchy plugin enable srozen.ufw right
+```
+
+ufw itself is a separate package — `sudo pacman -S ufw` if it is not already
+there. The widget will sit in the bar dimmed and say so until it is.
+
+Updating and removing go through the same command:
+
+```bash
+omarchy plugin update srozen.ufw
+omarchy plugin remove srozen.ufw
+```
+
 ## What it shows
 
 **In the bar** — one icon, three states:
