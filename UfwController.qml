@@ -179,7 +179,7 @@ Item {
     running: false
     // /bin/sh by absolute path too: a `sh` taken from PATH would be the same
     // hole one level up, free to print any path it liked for pkexec to run.
-    command: ["/bin/sh", "-c", "for p in /usr/sbin/ufw /usr/bin/ufw /sbin/ufw /bin/ufw; do if [ -x \"$p\" ]; then echo \"$p\"; break; fi; done"]
+    command: ["/bin/sh", "-c", "for p in " + root._ufwCandidates.join(" ") + "; do if [ -x \"$p\" ]; then echo \"$p\"; break; fi; done"]
     stdout: StdioCollector { id: probeStdout; waitForEnd: true }
     onExited: function(exitCode) {
       var found = String(probeStdout.text || "").replace(/^\s+|\s+$/g, "")
