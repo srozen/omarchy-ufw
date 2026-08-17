@@ -72,7 +72,24 @@ Item {
   // here that can launch one.
   signal terminalRequested(string command)
 
+  // Where ufw is, found by probing these absolute paths rather than by asking
+  // the session PATH. Whatever ends up here is the argument to pkexec, so it
+  // has to be a path the user's environment cannot choose: a writable entry
+  // early in PATH — a shared directory, a forgotten ~/.local/bin — would
+  // otherwise put an arbitrary binary behind ufw's name in the password dialog
+  // and run it as root. The list doubles as the allowlist the probe's answer
+  // is checked against, so the probe reports which of these exists; it does
+  // not get to name a new one.
+  readonly property var _ufwCandidates: ["/usr/sbin/ufw", "/usr/bin/ufw", "/sbin/ufw", "/bin/ufw"]
   property string _ufwPath: ""
+
+  // The two setuid helpers, also by absolute path and for a sharper reason
+  // than ufw itself. A planted `pkexec` or `sudo` does not get root — it runs
+  // as the user like anything else on PATH — but it is handed a user who has
+  // just asked for a password prompt and is expecting one, which makes it a
+  // very good place to collect the password and pass it on to the real thing.
+  readonly property string _pkexecPath: "/usr/bin/pkexec"
+  readonly property string _sudoPath: "/usr/bin/sudo"
 
   function refresh() {
     confFile.reload()
@@ -103,7 +120,10 @@ Item {
   // Every privileged call goes through here so there is exactly one place that
   // knows how this machine asks for a password.
   function run(args) {
-    var binary = root._ufwPath !== "" ? root._ufwPath : "ufw"
+    // No bare-name fallback: an unresolved ufw means not running one at all,
+    // rather than handing pkexec a name for it to look up in PATH.
+    if (root._ufwPath === "") return
+    var binary = root._ufwPath
     root.lastError = ""
 
     if (root.elevation === "terminal") {
@@ -111,7 +131,7 @@ Item {
       // exit code. The file watchers are what report the outcome, and the
       // settle timer is what gives up on the optimistic state if the user
       // closes the terminal at the prompt.
-      root.terminalRequested("sudo " + binary + " " + args.join(" "))
+      root.terminalRequested(root._sudoPath + " " + binary + " " + args.join(" "))
       root.actionStatus = ""
       settleTimer.ticks = 0
       settleTimer.restart()
@@ -119,7 +139,7 @@ Item {
     }
 
     root.acting = true
-    actionProcess.command = ["pkexec", binary].concat(args)
+    actionProcess.command = [root._pkexecPath, binary].concat(args)
     actionProcess.running = true
   }
 
@@ -157,10 +177,13 @@ Item {
   Process {
     id: probeProcess
     running: false
-    command: ["bash", "-c", "command -v ufw || true"]
+    // /bin/sh by absolute path too: a `sh` taken from PATH would be the same
+    // hole one level up, free to print any path it liked for pkexec to run.
+    command: ["/bin/sh", "-c", "for p in /usr/sbin/ufw /usr/bin/ufw /sbin/ufw /bin/ufw; do if [ -x \"$p\" ]; then echo \"$p\"; break; fi; done"]
     stdout: StdioCollector { id: probeStdout; waitForEnd: true }
     onExited: function(exitCode) {
-      root._ufwPath = String(probeStdout.text || "").replace(/^\s+|\s+$/g, "")
+      var found = String(probeStdout.text || "").replace(/^\s+|\s+$/g, "")
+      root._ufwPath = root._ufwCandidates.indexOf(found) >= 0 ? found : ""
       root.installed = root._ufwPath !== ""
       root.probed = true
       if (root.installed) root.refresh()
