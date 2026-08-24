@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "srozen.ufw",
   "name": "Firewall",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "srozen",
   "license": "MIT",
-  "description": "ufw firewall status in the Omarchy bar, with a switch and the current rule list.",
+  "description": "ufw firewall status in the Omarchy bar, with a switch, the current rule list, and adding and removing rules.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Firewall",
-    "description": "A wall with flames while ufw is active, and the same wall in the theme's urgent colour while it is not. Click for the default policies, the rule list, and a switch.",
+    "description": "A wall with flames while ufw is active, and the same wall in the theme's urgent colour while it is not. Click for the default policies, the rule list, a switch, and the controls to add and remove rules.",
     "category": "Security",
     "allowMultiple": false,
     "defaultSection": "right",
