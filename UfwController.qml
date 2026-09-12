@@ -16,6 +16,12 @@ import "Model.js" as Model
 // means a prompt: pkexec by default, because Omarchy ships a polkit agent and
 // the dialog it draws matches the rest of the desktop. A terminal running
 // `sudo ufw enable` is the fallback for a session without an agent.
+//
+// Adding and removing rules go through the same door. Nothing they carry is
+// ever pasted into a command line: run() hands pkexec an argument list, and
+// the values in that list have already been checked against a shape by
+// Model.js before they get here. The terminal fallback is the one path that
+// does have to produce a line of shell, and it quotes every argument itself.
 Item {
   id: root
 
@@ -37,6 +43,14 @@ Item {
   property bool acting: false
   property string actionStatus: ""
   property string lastError: ""
+
+  // "" | "toggle" | "reload" | "add" | "delete" — which command is in flight,
+  // so a row can show its own spinner rather than the whole panel greying out.
+  property string actionKind: ""
+
+  // Raised when a rule command comes back clean. The panel uses it to close
+  // the add form only once ufw has actually taken the rule.
+  signal ruleCommitted(string kind)
 
   // Optimistic state, the same shape the VPN widget's backends use: -1 follows
   // the file, 0/1 override it while a command is in flight. That is what makes
@@ -108,48 +122,117 @@ Item {
     if (stateKnown && value === isOn) return
     root._desired = value ? 1 : 0
     root.actionStatus = value ? "Enabling…" : "Disabling…"
-    run(value ? ["--force", "enable"] : ["disable"])
+    var command = value ? Model.UFW_COMMANDS.enable : Model.UFW_COMMANDS.disable
+    run(command.args, "toggle", command.flags)
   }
 
   function reloadFirewall() {
     if (!installed || acting || !isOn) return
     root.actionStatus = "Reloading…"
-    run(["reload"])
+    run(Model.UFW_COMMANDS.reload.args, "reload", Model.UFW_COMMANDS.reload.flags)
+  }
+
+  // ---- Rules
+  //
+  // Both of these take the argument list Model.js built and hand it straight
+  // to run(). Neither builds one itself, and neither is given a chance to: a
+  // spec that did not validate arrives here as an empty list, which is refused
+  // rather than run with whatever survived.
+
+  // A rule the user described in the panel. `spec` is
+  // { action, direction, protocol, port, from, comment } — free text in three
+  // of those fields, which is why nothing about it is trusted until
+  // buildAddArgs has had a look.
+  function addRule(spec) {
+    if (!installed || acting) return false
+    var built = Model.buildAddArgs(spec)
+    if (built.error !== "") {
+      root.lastError = built.error
+      return false
+    }
+    root.actionStatus = "Adding…"
+    run(built.args, "add")
+    return true
+  }
+
+  // A rule already in the list, named rather than numbered. `ufw delete 3`
+  // would mean "whatever is third when the password comes back", which is not
+  // necessarily the row that was clicked.
+  function deleteRule(row) {
+    if (!installed || acting) return false
+    if (!row || !row.deleteArgs || row.deleteArgs.length === 0) {
+      root.lastError = "That rule cannot be removed from here. Use `sudo ufw status numbered`."
+      return false
+    }
+    root.actionStatus = "Removing…"
+    run(row.deleteArgs.slice(), "delete")
+    return true
   }
 
   // Every privileged call goes through here so there is exactly one place that
   // knows how this machine asks for a password.
-  function run(args) {
+  function run(args, kind, flags) {
     // No bare-name fallback: an unresolved ufw means not running one at all,
     // rather than handing pkexec a name for it to look up in PATH.
     if (root._ufwPath === "") return
+    // Last line of defence, one step from the password dialog: refuse to run
+    // at all rather than run a list something has put a stray flag into.
+    //
+    // Only the payload goes through allArgsSafe. The leading dash that makes
+    // `--force` a legitimate flag is the same one that would make a comment
+    // field a forgery, so the two halves cannot share a check: flags are held
+    // to the allowlist in Model.js instead, and nothing outside this file
+    // supplies them.
+    if (!Model.allArgsSafe(args) || !Model.allFlagsAllowed(flags)) {
+      // Drop the optimistic state with it. A switch left reading "on" against
+      // a command that never ran is the one failure this widget must not have.
+      root._desired = -1
+      root.lastError = "The firewall command was refused before it ran."
+      root.actionStatus = ""
+      return
+    }
+    var argv = (flags || []).concat(args)
     var binary = root._ufwPath
     root.lastError = ""
+    root.actionKind = String(kind || "")
 
     if (root.elevation === "terminal") {
+      // The one place a command line has to exist. A rule can carry a comment
+      // with a space in it, so every argument is quoted on the way out — the
+      // list is the truth, and this is only its spelling.
+      var line = Util.shellQuote(root._sudoPath) + " " + Util.shellQuote(binary)
+      for (var i = 0; i < argv.length; i++) line += " " + Util.shellQuote(argv[i])
+
       // A terminal owns the password prompt, so nothing here can watch for the
       // exit code. The file watchers are what report the outcome, and the
       // settle timer is what gives up on the optimistic state if the user
       // closes the terminal at the prompt.
-      root.terminalRequested(root._sudoPath + " " + binary + " " + args.join(" "))
+      root.terminalRequested(line)
       root.actionStatus = ""
+      root.actionKind = ""
+      // A rule sent to a terminal has left this widget's hands; the form can
+      // close, because the answer is going to arrive as a file change.
+      if (kind === "add" || kind === "delete") root.ruleCommitted(String(kind))
       settleTimer.ticks = 0
       settleTimer.restart()
       return
     }
 
     root.acting = true
-    actionProcess.command = [root._pkexecPath, binary].concat(args)
+    actionProcess.command = [root._pkexecPath, binary].concat(argv)
     actionProcess.running = true
   }
 
   // A refusal at the password dialog is a decision, not a fault, so it clears
   // the optimistic state without painting an error across the panel.
   function _finishAction(exitCode, message) {
+    var kind = root.actionKind
     root.acting = false
     root.actionStatus = ""
+    root.actionKind = ""
     if (exitCode === 0) {
       root.lastError = ""
+      if (kind === "add" || kind === "delete") root.ruleCommitted(kind)
     } else {
       root._desired = -1
       root.lastError = exitCode === 126 || exitCode === 127
