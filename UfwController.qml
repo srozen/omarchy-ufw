@@ -122,13 +122,14 @@ Item {
     if (stateKnown && value === isOn) return
     root._desired = value ? 1 : 0
     root.actionStatus = value ? "Enabling…" : "Disabling…"
-    run(value ? ["--force", "enable"] : ["disable"], "toggle")
+    var command = value ? Model.UFW_COMMANDS.enable : Model.UFW_COMMANDS.disable
+    run(command.args, "toggle", command.flags)
   }
 
   function reloadFirewall() {
     if (!installed || acting || !isOn) return
     root.actionStatus = "Reloading…"
-    run(["reload"], "reload")
+    run(Model.UFW_COMMANDS.reload.args, "reload", Model.UFW_COMMANDS.reload.flags)
   }
 
   // ---- Rules
@@ -170,17 +171,27 @@ Item {
 
   // Every privileged call goes through here so there is exactly one place that
   // knows how this machine asks for a password.
-  function run(args, kind) {
+  function run(args, kind, flags) {
     // No bare-name fallback: an unresolved ufw means not running one at all,
     // rather than handing pkexec a name for it to look up in PATH.
     if (root._ufwPath === "") return
     // Last line of defence, one step from the password dialog: refuse to run
     // at all rather than run a list something has put a stray flag into.
-    if (!Model.allArgsSafe(args)) {
+    //
+    // Only the payload goes through allArgsSafe. The leading dash that makes
+    // `--force` a legitimate flag is the same one that would make a comment
+    // field a forgery, so the two halves cannot share a check: flags are held
+    // to the allowlist in Model.js instead, and nothing outside this file
+    // supplies them.
+    if (!Model.allArgsSafe(args) || !Model.allFlagsAllowed(flags)) {
+      // Drop the optimistic state with it. A switch left reading "on" against
+      // a command that never ran is the one failure this widget must not have.
+      root._desired = -1
       root.lastError = "The firewall command was refused before it ran."
       root.actionStatus = ""
       return
     }
+    var argv = (flags || []).concat(args)
     var binary = root._ufwPath
     root.lastError = ""
     root.actionKind = String(kind || "")
@@ -190,7 +201,7 @@ Item {
       // with a space in it, so every argument is quoted on the way out — the
       // list is the truth, and this is only its spelling.
       var line = Util.shellQuote(root._sudoPath) + " " + Util.shellQuote(binary)
-      for (var i = 0; i < args.length; i++) line += " " + Util.shellQuote(args[i])
+      for (var i = 0; i < argv.length; i++) line += " " + Util.shellQuote(argv[i])
 
       // A terminal owns the password prompt, so nothing here can watch for the
       // exit code. The file watchers are what report the outcome, and the
@@ -208,7 +219,7 @@ Item {
     }
 
     root.acting = true
-    actionProcess.command = [root._pkexecPath, binary].concat(args)
+    actionProcess.command = [root._pkexecPath, binary].concat(argv)
     actionProcess.running = true
   }
 

@@ -626,6 +626,77 @@ test("commandText quotes for the eye without changing the list", () => {
   assert.strictEqual(Model.commandText(["allow", "22/tcp"]), "ufw allow 22/tcp")
 })
 
+// ---- The commands the controller issues
+//
+// The gate in run() and the argument lists it guards sit on opposite sides of a
+// QML boundary this suite cannot cross, and that is the seam a refusal aimed at
+// rule fields slipped through: `--force` was spelled inline in the enable call,
+// where the check that stops a comment becoming a flag stopped enabling the
+// firewall instead. Disabling still worked, so the panel could turn ufw off and
+// never back on. Keeping the fixed commands in Model.js is what puts them back
+// within reach of a test.
+
+test("every fixed command's payload survives the gate run() puts it through", () => {
+  const names = Object.keys(Model.UFW_COMMANDS)
+  assert.ok(names.length > 0)
+  for (const name of names) {
+    assert.ok(Model.allArgsSafe(Model.UFW_COMMANDS[name].args),
+      `${name} payload would be refused before it ran`)
+  }
+})
+
+test("enabling the firewall is not refused by the check that guards rule fields", () => {
+  const enable = Model.UFW_COMMANDS.enable
+  assert.ok(Model.allArgsSafe(enable.args))
+  assert.ok(Model.allFlagsAllowed(enable.flags))
+  // The flag still reaches ufw, and still ahead of the verb.
+  assert.deepStrictEqual(enable.flags.concat(enable.args), ["--force", "enable"])
+})
+
+test("disable and reload carry no flags at all", () => {
+  assert.deepStrictEqual(Model.UFW_COMMANDS.disable.flags, [])
+  assert.deepStrictEqual(Model.UFW_COMMANDS.reload.flags, [])
+})
+
+test("every flag a fixed command carries is one the allowlist names", () => {
+  for (const name of Object.keys(Model.UFW_COMMANDS)) {
+    assert.ok(Model.allFlagsAllowed(Model.UFW_COMMANDS[name].flags), name)
+  }
+})
+
+test("a flag outside the allowlist is refused", () => {
+  assert.strictEqual(Model.allFlagsAllowed(["--dry-run"]), false)
+  assert.strictEqual(Model.allFlagsAllowed(["--force", "-f"]), false)
+  // ufw's own flags are the point of the allowlist, not just malformed ones.
+  assert.strictEqual(Model.allFlagsAllowed(["--add-new"]), false)
+})
+
+test("no flags is not the same as a bad flag", () => {
+  assert.strictEqual(Model.allFlagsAllowed([]), true)
+  assert.strictEqual(Model.allFlagsAllowed(undefined), true)
+  assert.strictEqual(Model.allFlagsAllowed(null), true)
+})
+
+test("a rule's own arguments are never eligible to be flags", () => {
+  // buildAddArgs and deleteArgsFor produce payloads, and the controller has no
+  // path that could hand one to the flags parameter — but if it grew one, the
+  // allowlist would refuse it rather than pass a rule field to ufw as a flag.
+  const built = Model.buildAddArgs({ action: "allow", protocol: "tcp", port: "22" })
+  assert.strictEqual(built.error, "")
+  assert.strictEqual(Model.allFlagsAllowed(built.args), false)
+})
+
+// The one structural check in the suite, and the reason the constants above are
+// worth anything: it holds the controller to taking its commands from them.
+// Object.keys(UFW_COMMANDS) only covers what UFW_COMMANDS knows about, so a new
+// privileged call spelled inline would be invisible to every test here.
+test("the controller spells no privileged command inline", () => {
+  const controller = fs.readFileSync(path.join(__dirname, "..", "UfwController.qml"), "utf8")
+  const inline = controller.match(/\brun\(\s*\[/g)
+  assert.strictEqual(inline, null,
+    "run() is called with a literal argument list; put it in Model.UFW_COMMANDS instead")
+})
+
 // ---- Report
 
 

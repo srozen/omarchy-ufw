@@ -379,6 +379,40 @@ var MAX_MULTIPORT = 15
 // in a bar panel, and this is the one field with no shape of its own.
 var MAX_COMMENT = 128
 
+// ---- The commands that carry no rule
+//
+// enable, disable and reload are chosen here in source and never touched by
+// anything the user typed. They are split into the flags ufw parses off the
+// front and the payload that follows, and that split is the whole point:
+// isSafeArgument exists to stop a rule field becoming a flag, and it cannot
+// tell a `--force` picked from this list apart from a `--force` typed into the
+// comment box. Gate the payload, hold the flags to an allowlist, and both
+// stay true at once.
+//
+// They live here rather than as literals in the controller because the suite
+// has no QML engine. A constant in this file is something a test can hold to
+// the same gate the controller applies; an argument list spelled inline in a
+// run() call is not, which is exactly how a refusal aimed at rule fields came
+// to stop the firewall being switched on.
+var FLAG_ALLOWLIST = ["--force"]
+
+var UFW_COMMANDS = {
+  // `--force` skips ufw's "this may disrupt existing ssh connections"
+  // question, which has nobody to answer it from behind a pkexec dialog.
+  enable: { flags: ["--force"], args: ["enable"] },
+  disable: { flags: [], args: ["disable"] },
+  reload: { flags: [], args: ["reload"] }
+}
+
+// The trusted half of a command, checked anyway. Belt and braces beside a
+// constant that is already a literal, but it is what stops run()'s unguarded
+// half growing quietly later.
+function allFlagsAllowed(flags) {
+  if (!flags) return true
+  for (var i = 0; i < flags.length; i++) if (!inList(FLAG_ALLOWLIST, flags[i])) return false
+  return true
+}
+
 function inList(list, value) {
   return list.indexOf(value) >= 0
 }
@@ -764,6 +798,9 @@ if (typeof module !== "undefined") {
     commandText: commandText,
     matchingDeleteCount: matchingDeleteCount,
     allArgsSafe: allArgsSafe,
+    allFlagsAllowed: allFlagsAllowed,
+    UFW_COMMANDS: UFW_COMMANDS,
+    FLAG_ALLOWLIST: FLAG_ALLOWLIST,
     ACTIONS: ACTIONS,
     DIRECTIONS: DIRECTIONS,
     PROTOCOLS: PROTOCOLS
